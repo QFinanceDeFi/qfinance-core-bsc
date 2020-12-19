@@ -6,7 +6,6 @@ import "./QPool.sol";
 import "./QPoolPublic.sol";
 
 contract QPoolFactory {
-    address[] private allPools;
     address[] private privatePools;
     address[] private publicPools;
     mapping(address => bool) private isPool;
@@ -30,7 +29,6 @@ contract QPoolFactory {
     public returns (address) {
         QPool pool = new QPool(_name, _tokens, _amounts, msg.sender);
         emit PoolCreated(pool);
-        allPools.push(address(pool));
         privatePools.push(address(pool));
         isPool[address(pool)] = true;
         return address(pool);
@@ -40,7 +38,6 @@ contract QPoolFactory {
     public returns (address) {
         QPoolPublic pool = new QPoolPublic(_name, _tokens, _amounts, msg.sender);
         emit PublicPoolCreated(pool);
-        allPools.push(address(pool));
         publicPools.push(address(pool));
         isPool[address(pool)] = true;
     }
