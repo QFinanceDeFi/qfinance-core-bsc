@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^ 0.6.6;
+pragma solidity ^ 0.8.0;
 
 import "./QPool.sol";
 import "./QPoolPublic.sol";
@@ -40,5 +40,6 @@ contract QPoolFactory {
         emit PublicPoolCreated(pool);
         publicPools.push(address(pool));
         isPool[address(pool)] = true;
+        return address(pool);
     }
 }

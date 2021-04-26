@@ -2,12 +2,13 @@ const QPoolFactory = artifacts.require("QPoolFactory.sol");
 const QPoolPrivate = artifacts.require("QPool.sol");
 const QPoolPublic = artifacts.require("QPoolPublic.sol");
 const web3 = require('web3');
-const daiAddress = web3.utils.toChecksumAddress("0x4f96fe3b7a6cf9725f59d353f723c1bdb64ca6aa");
-const uniAddress = web3.utils.toChecksumAddress("0x1f9840a85d5af5bf1d1762f925bdaddc4201f984");
+const btcbAddress = web3.utils.toChecksumAddress("0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c");
+const busdAddress = web3.utils.toChecksumAddress("0xe9e7cea3dedca5984780bafc599bd69add087d56");
 
-const tokenList = [daiAddress, uniAddress]
+const tokenList = [btcbAddress, busdAddress]
 
 contract("QPoolFactory", async accounts => {
+    console.log(accounts[0]);
     it("Deploy QPoolFactory and create private pool", async () => {
         let qfactory = await QPoolFactory.deployed();
         await qfactory.newPool(
@@ -26,7 +27,7 @@ contract("QPoolFactory", async accounts => {
         assert.equal(newPool.length, 1, 'No pool created');
     })
 
-    it("Deposit ETH to private pool", async () => {
+    it("Deposit BNB to private pool", async () => {
         let qfactory = await QPoolFactory.deployed();
         await qfactory.newPool(
             "New Pool", tokenList, [50,50]
@@ -35,10 +36,10 @@ contract("QPoolFactory", async accounts => {
         let pool = await QPoolPrivate.at(newPool[0]);
         let value = web3.utils.toWei('.1', 'ether');
         await pool.processDeposit.sendTransaction({from: accounts[0], value});
-        await pool.withdrawEth.sendTransaction(100, {from: accounts[0]});
+        await pool.withdrawFunds.sendTransaction(100, {from: accounts[0]});
     })
 
-    it("Deposit ETH to public pool", async () => {
+    it("Deposit BNB to public pool", async () => {
         // Deploy factory
         let qfactory = await QPoolFactory.deployed();
         await qfactory.newPublicPool(
@@ -69,8 +70,8 @@ contract("QPoolFactory", async accounts => {
         assert.equal(balanceTwo, web3.utils.toWei('500', 'ether'));
         
         // Withdraw deposit
-        await pool.withdrawEth.sendTransaction(50, {from: accounts[0]})
-        await pool.withdrawEth.sendTransaction(100, {from: accounts[1]})
+        await pool.withdrawFunds.sendTransaction(50, {from: accounts[0]})
+        await pool.withdrawFunds.sendTransaction(100, {from: accounts[1]})
 
         // Check balances
         balanceOne = await pool.balanceOf.call(accounts[0]);
@@ -80,7 +81,7 @@ contract("QPoolFactory", async accounts => {
         assert.equal(balanceTwo, 0);
 
         // Final withdrawal
-        await pool.withdrawEth.sendTransaction(100, {from: accounts[0]});
+        await pool.withdrawFunds.sendTransaction(100, {from: accounts[0]});
         balanceOne = await pool.balanceOf.call(accounts[0]);
 
         assert.equal(balanceOne, 0);

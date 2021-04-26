@@ -11,23 +11,6 @@ module.exports = {
      host: "127.0.0.1",
      port: 8545,
      network_id: "*",
-    },
-    // Kovan Ethereum testnet blockchain
-    kovan: {
-      provider: new HDWalletProvider(mnemonic, `https://kovan.infura.io/v3/${projectId}`),
-      port: 443,
-      network_id: "*",
-      from: address,
-      gas: 10000000
-    },
-    // Ethereum mainnet production blockchain
-    mainnet: {
-      provider: new HDWalletProvider(mnemonic, `https://mainnet.infura.io/v3/${projectId}`),
-      port: 443,
-      network_id: "*",
-      from: address,
-      gas: 10000000,
-      gasPrice: 27000000000
     }
   },
 
@@ -39,7 +22,7 @@ module.exports = {
   // Configure your compilers
   compilers: {
     solc: {
-      version: "0.6.12",
+      version: "0.8.4",
       docker: false,
       settings: {
        optimizer: {

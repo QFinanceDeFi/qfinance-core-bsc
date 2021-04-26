@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^ 0.6.6;
+pragma solidity ^ 0.8.0;
 
-import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
+import "pancakeswap-peripheral/contracts/interfaces/IPancakeRouter02.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -14,11 +14,11 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
     address[] private tokens;
     uint256[] private amounts;
     address public creator;
-    address private uniswapFactoryAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Router02 public uniswapRouter;
+    address private pancakeRouterAddress = 0x05fF2B0DB69458A0750badebc4f9e13aDd608C7F;
+    IPancakeRouter02 private pancakeRouter;
     
-    address[] private depositors;
     mapping(address => uint) private deposits;
+    uint256 public totalDeposits;
     
     event TradeCompleted(uint256[] acquired);
     event DepositProcessed(uint256 amount);
@@ -29,10 +29,10 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
         address[] memory _tokens,
         uint256[] memory _amounts,
         address _creator
-        ) ERC20 ("QPoolDepositToken", "QPDT") public {
+        ) ERC20 ("QPoolDepositToken", "QPDT") {
             uint256 _total = 0;
-            require(tokens.length <= 5 && tokens.length == amounts.length);
-            for (uint256 i = 0; i < _amounts.length && i <= 5; i++) {
+            require(tokens.length == amounts.length);
+            for (uint256 i = 0; i < _amounts.length; i++) {
                 _total += _amounts[i];
             }
             require(_total == 100);
@@ -40,7 +40,7 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
             tokens = _tokens;
             amounts = _amounts;
             creator = _creator;
-            uniswapRouter = IUniswapV2Router02(uniswapFactoryAddress);
+            pancakeRouter = IPancakeRouter02(pancakeRouterAddress);
         }
     
     fallback() external payable nonReentrant {
@@ -49,15 +49,14 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     receive() external payable nonReentrant {
-        require(msg.data.length == 0);
         processDeposit();
     }
 
     function processDeposit() public payable nonReentrant {
         uint256 _newIssuance = calculateShare();
-        if (deposits[msg.sender] == 0) addDepositor(msg.sender);
         deposits[msg.sender] = deposits[msg.sender].add(msg.value);
-        require(makeExchange());
+        totalDeposits = totalDeposits.add(msg.value);
+        require(makeExchange(), "Exchange failed");
         _mint(msg.sender, _newIssuance);
         emit DepositProcessed(msg.value);
     }
@@ -65,12 +64,12 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
     function makeExchange() private returns (bool) {
         address[] memory _path = new address[](2);
         for (uint256 i = 0; i < tokens.length && i<= 5; i++) {
-            _path[0] = uniswapRouter.WETH();
+            _path[0] = pancakeRouter.WETH();
             _path[1] = tokens[i];
-            uint256 _time = now + 15 + i;
+            uint256 _time = block.timestamp + 15 + i;
             uint256 _amountEth = msg.value.mul(amounts[i]).div(100);
-            uint256[] memory _expected = uniswapRouter.getAmountsOut(_amountEth, _path);
-            uint256[] memory _output = uniswapRouter.swapExactETHForTokens.value(_expected[0])(_expected[1], _path, address(this), _time);
+            uint256[] memory _expected = pancakeRouter.getAmountsOut(_amountEth, _path);
+            uint256[] memory _output = pancakeRouter.swapExactETHForTokens{value: _expected[0]}(_expected[1], _path, address(this), _time);
             emit TradeCompleted(_output);
         }
         return true;
@@ -84,8 +83,8 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
             uint256 _totalBalance = _token.balanceOf(address(this));
             if (_totalBalance == 0) return 0;
             _path[0] = tokens[i];
-            _path[1] = uniswapRouter.WETH();
-            uint256[] memory _ethValue = uniswapRouter.getAmountsOut(_totalBalance, _path);
+            _path[1] = pancakeRouter.WETH();
+            uint256[] memory _ethValue = pancakeRouter.getAmountsOut(_totalBalance, _path);
             _totalValue += _ethValue[1];
         }
         return _totalValue;
@@ -96,14 +95,14 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
             return 1000000000000000000000;
         } else {
             uint256 _totalValue = totalValue();
-            uint256 _tmp = 100;
+            uint _tmp = 100;
             uint256 _poolShare = _tmp.mul(msg.value).div(_totalValue);
             uint256 _mintAmount = totalSupply().mul(_poolShare).div(100);
             return _mintAmount;
         }
     }
     
-    function withdrawEth(uint256 _percent) public nonReentrant {
+    function withdrawFunds(uint256 _percent) public nonReentrant {
         require(_percent > 0);
         uint256 _userShare = balanceOf(msg.sender);
         uint256 _burnAmount = _userShare.mul(_percent).div(100);
@@ -112,10 +111,11 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
         require(balanceOf(msg.sender) >= _burnAmount);
         require(approve(address(this), _burnAmount));
         _burn(msg.sender, _burnAmount);
-        deposits[msg.sender] = deposits[msg.sender].sub((deposits[msg.sender]).mul(_percent).div(100));
-        if (deposits[msg.sender] == 0) removeDepositor(msg.sender);
+        uint256 reduce = deposits[msg.sender].mul(_percent).div(100);
         (bool success, uint256 total) = sellTokens(_poolShare, _percent);
         require(success);
+        deposits[msg.sender] = deposits[msg.sender].sub(reduce);
+        totalDeposits = totalDeposits.sub(reduce);
         emit WithdrawalProcessed(total);
     }
 
@@ -127,13 +127,13 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
             uint256 _addressBalance = _token.balanceOf(address(this));
             uint256 _amountOut = _addressBalance.mul(_poolShare).mul(_percent).div(10000);
             require(_amountOut > 0);
-            require(_token.approve(address(uniswapRouter), _amountOut));
+            require(_token.approve(address(pancakeRouter), _amountOut));
             _path[0] = tokens[i];
-            _path[1] = uniswapRouter.WETH();
-            uint256[] memory _expected = uniswapRouter.getAmountsOut(_amountOut, _path);
+            _path[1] = pancakeRouter.WETH();
+            uint256[] memory _expected = pancakeRouter.getAmountsOut(_amountOut, _path);
             require(_expected[1] > 1000000);
-            uint256 _time = now + 15 + i;
-            uint256[] memory _output = uniswapRouter.swapExactTokensForETH(_expected[0], _expected[1], _path, msg.sender, _time);
+            uint256 _time = block.timestamp + 15 + i;
+            uint256[] memory _output = pancakeRouter.swapExactTokensForETH(_expected[0], _expected[1], _path, msg.sender, _time);
             total += _output[1];
             emit TradeCompleted(_output);
         }
@@ -144,7 +144,6 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 _userShare = balanceOf(msg.sender);
         uint256 _poolShare = _userShare.div(totalSupply()).mul(100);
         _burn(msg.sender, _userShare);
-        removeDepositor(msg.sender);
         for (uint256 i = 0; i < tokens.length; i++) {
             ERC20 _token = ERC20(tokens[i]);
             uint256 _addressBalance = _token.balanceOf(address(this));
@@ -154,32 +153,8 @@ contract QPoolPublic is ERC20, ERC20Burnable, ReentrancyGuard {
         }
     }
     
-    function isDepositor(address _address) public view returns (bool, uint256) {
-        for (uint256 i = 0; i < depositors.length; i++) {
-            if (_address == depositors[i]) return (true, i);
-        }
-        return (false, 0);
-    }
-        
-    function totalDeposits() public view returns (uint256) {
-        uint256 _totalDeposits = 0;
-        for (uint256 i = 0; i < depositors.length; i++) {
-            _totalDeposits = _totalDeposits.add(deposits[depositors[i]]);
-        }
-        return _totalDeposits;
-    }
-    
-    function addDepositor(address _depositor) private {
-        (bool _isDepositor, ) = isDepositor(_depositor);
-        if(!_isDepositor) depositors.push(_depositor);
-    }
-    
-    function removeDepositor(address _depositor) private {
-        (bool _isDepositor, uint256 i) = isDepositor(_depositor);
-        if (_isDepositor) {
-            depositors[i] = depositors[depositors.length - 1];
-            depositors.pop();
-        }
+    function checkDeposits(address _address) public view returns (uint256) {
+        return deposits[_address];
     }
 
     function getTokens() public view returns (address[] memory) {
